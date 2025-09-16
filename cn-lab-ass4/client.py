@@ -2,44 +2,50 @@ import cv2
 import socket
 import pickle
 
-# Client settings
-client_ip = "127.0.0.1"
-client_port = 9999
+# Client configuration
+HOST = "127.0.0.1"
+PORT = 9999
 
-# Create UDP socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind((client_ip, client_port))
+# Initialize UDP socket
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+client_socket.bind((HOST, PORT))
 
-buffer = []
+frame_parts = []  # temporary storage for chunks
 
-print("[CLIENT] Waiting for video stream...")
+print("[CLIENT] Ready to receive video stream...")
 
 while True:
     try:
-        packet, _ = sock.recvfrom(65536)  # receive packet
-        marker, chunk = pickle.loads(packet)  # receive (marker, chunk)
+        # Receive incoming UDP packet
+        packet_data, _ = client_socket.recvfrom(65536)
+        end_flag, segment = pickle.loads(packet_data)  # unpack (end_flag, segment)
 
-        buffer.append(chunk)
+        # Add received segment to list
+        frame_parts.append(segment)
 
-        if marker == 1:  # last chunk of frame
-            # Reconstruct frame
-            data = b"".join(buffer)
-            frame_data = pickle.loads(data)
-            frame = cv2.imdecode(frame_data, cv2.IMREAD_COLOR)
+        # Check if this was the last segment of the frame
+        if end_flag == 1:
+            # Combine all pieces into one frame
+            full_bytes = b"".join(frame_parts)
+            encoded_frame = pickle.loads(full_bytes)
 
-            # Display video frame
-            cv2.imshow("UDP Video Stream", frame)
+            # Decode image back into OpenCV format
+            image = cv2.imdecode(encoded_frame, cv2.IMREAD_COLOR)
 
-            buffer.clear()
+            # Show the video frame
+            cv2.imshow("Live UDP Stream", image)
 
-            # Stop when user presses "q"
-            if cv2.waitKey(1) & 0xFF == ord("q"):
+            # Reset storage for next frame
+            frame_parts.clear()
+
+            # Exit loop when user presses 'q'
+            if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
     except KeyboardInterrupt:
         break
 
-sock.close()
+# Clean up resources
+client_socket.close()
 cv2.destroyAllWindows()
-print("[CLIENT] Streaming finished")
-
+print("[CLIENT] Connection closed")
